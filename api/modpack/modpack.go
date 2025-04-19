@@ -34,7 +34,7 @@ type publicModpack struct {
 
 type Modpack struct {
 	onlySyncEmpty, ignoreExternals bool
-	name, desc                     string
+	name, desc, modloader          string
 	version, gameVersion           version.Version
 	mods                           struct {
 		mdrth    []localmod.LocalMod
@@ -184,7 +184,7 @@ func FromToml(name string, onlySyncEmpty, ignoreExternals bool) (Modpack, error)
 		return Modpack{}, err
 	}
 
-	mp := Modpack{name: st.Name, version: mpv, gameVersion: mcv, mods: struct {
+	mp := Modpack{name: st.Name, version: mpv, gameVersion: mcv, modloader: st.Modloader, mods: struct {
 		mdrth    []localmod.LocalMod
 		external map[string]string
 	}{external: st.Mods.External}, onlySyncEmpty: onlySyncEmpty, ignoreExternals: ignoreExternals}

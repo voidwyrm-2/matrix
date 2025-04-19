@@ -84,7 +84,7 @@ func (lm LocalMod) ToPublic() struct {
 	}
 }
 
-func (lm *LocalMod) Download(gameVersion string) ([]byte, string, []remotemod.RemoteModVersionDependency, error) {
+func (lm *LocalMod) Download(gameVersion, modloader string) ([]byte, string, []remotemod.RemoteModVersionDependency, error) {
 	versionToUse := remotemod.RemoteModVersion{}
 
 	if lm.forceVersion != "" {
@@ -107,14 +107,14 @@ func (lm *LocalMod) Download(gameVersion string) ([]byte, string, []remotemod.Re
 			lm.desc = remote.Description
 		}
 
-		if !slices.Contains(remote.GameVersions, gameVersion) {
+		if !slices.Contains(remote.GameVersions, gameVersion) || slices.Contains(remote.Loaders, modloader) {
 			return []byte{}, "", []remotemod.RemoteModVersionDependency{}, fmt.Errorf("no mods found with version %s for '%s'('%s')\n", gameVersion, lm.slug, lm.id)
 		}
 
 		filteredVersions := []remotemod.RemoteModVersion{}
 
 		for _, rm := range remote.Versions {
-			if slices.Contains(rm.GameVersions, gameVersion) && slices.Contains(rm.Loaders, "neoforge") {
+			if slices.Contains(rm.GameVersions, gameVersion) && slices.Contains(rm.Loaders, modloader) {
 				filteredVersions = append(filteredVersions, rm)
 			}
 		}
