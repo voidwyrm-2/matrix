@@ -103,7 +103,7 @@ func (mp *Modpack) downloadMods(mods []localmod.LocalMod, downloadedDependencies
 			continue
 		}
 
-		if mbytes, mname, dependancies, err := m.Download(mp.gameVersion.String()); err != nil {
+		if mbytes, mname, dependancies, err := m.Download(mp.gameVersion.String(), mp.modloader); err != nil {
 			return err
 		} else if err = internal.WriteFile(filepath.Join("mods", mname), mbytes); err != nil {
 			return err
