@@ -107,7 +107,7 @@ func (lm *LocalMod) Download(gameVersion, modloader string) ([]byte, string, []r
 			lm.desc = remote.Description
 		}
 
-		if !slices.Contains(remote.GameVersions, gameVersion) || slices.Contains(remote.Loaders, modloader) {
+		if !slices.Contains(remote.GameVersions, gameVersion) || !slices.Contains(remote.Loaders, modloader) {
 			return []byte{}, "", []remotemod.RemoteModVersionDependency{}, fmt.Errorf("no mods found with version %s for '%s'('%s')\n", gameVersion, lm.slug, lm.id)
 		}
 
