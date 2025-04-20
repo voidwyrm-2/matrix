@@ -1,13 +1,17 @@
 package main
 
 import (
+	_ "embed"
 	"os"
 
 	"github.com/voidwyrm-2/matrix/cmd"
 )
 
+//go:embed version.txt
+var version string
+
 func _main() error {
-	return cmd.Execute()
+	return cmd.Execute(version)
 }
 
 func main() {
