@@ -9,6 +9,5 @@ __pycache__
 bin/
 obj/
 
-build.sh
-_type_test.go
-repak.exe
+gen.py
+makefile
