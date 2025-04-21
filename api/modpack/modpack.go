@@ -22,16 +22,6 @@ func errIs(e error, s string) bool {
 	return e.Error() == s
 }
 
-type publicModpack struct {
-	Name, ModpackVersion, GameVersion, Modloader string
-	Mods                                         struct {
-		External map[string]string
-		Mdrth    []struct {
-			Id, Slug, Name, Desc, Version, ForceVersion string `json:",omitempty"`
-		}
-	}
-}
-
 type Modpack struct {
 	onlySyncEmpty, ignoreExternals bool
 	name, desc, modloader          string
@@ -120,7 +110,7 @@ func (mp *Modpack) downloadMods(mods []localmod.LocalMod, downloadedDependencies
 			for _, d := range dependancies {
 				if _, ok := downloadedDependencies[d.ProjectId]; !ok && d.Kind == "required" {
 					downloadedDependencies[d.ProjectId] = struct{}{}
-					dmods = append(dmods, localmod.NewWithoutVersion("", "", d.ProjectId, "", ""))
+					dmods = append(dmods, localmod.NewWithoutVersion("", "", d.ProjectId, "", "", m.ToPublic().ForceLoader))
 				}
 			}
 
@@ -137,16 +127,30 @@ func (mp Modpack) Mods() []localmod.LocalMod {
 	return mp.mods.mdrth
 }
 
+func (mp Modpack) Name() string {
+	return mp.name
+}
+
+func (mp Modpack) Version() string {
+	return mp.version.String()
+}
+
+func (mp Modpack) GameVersion() string {
+	return mp.gameVersion.String()
+}
+
+func (mp Modpack) Modloader() string {
+	return mp.modloader
+}
+
 func (mp Modpack) ToToml(name string) error {
-	pm := publicModpack{
+	pm := internal.PublicModpack{
 		Name:           mp.name,
 		ModpackVersion: mp.version.String(),
 		GameVersion:    mp.gameVersion.String(),
 		Mods: struct {
 			External map[string]string
-			Mdrth    []struct {
-				Id, Slug, Name, Desc, Version, ForceVersion string `json:",omitempty"`
-			}
+			Mdrth    []internal.PublicLocalMod
 		}{
 			External: mp.mods.external,
 		},
@@ -167,7 +171,7 @@ func (mp Modpack) ToToml(name string) error {
 }
 
 func FromToml(name string, onlySyncEmpty, ignoreExternals bool) (Modpack, error) {
-	st := publicModpack{}
+	st := internal.PublicModpack{}
 
 	_, err := toml.DecodeFile(name, &st)
 	if err != nil {
@@ -190,9 +194,9 @@ func FromToml(name string, onlySyncEmpty, ignoreExternals bool) (Modpack, error)
 	}{external: st.Mods.External}, onlySyncEmpty: onlySyncEmpty, ignoreExternals: ignoreExternals}
 
 	for _, m := range st.Mods.Mdrth {
-		lm := localmod.NewWithoutVersion(m.Name, m.Desc, m.Id, m.Slug, m.ForceVersion)
+		lm := localmod.NewWithoutVersion(m.Name, m.Desc, m.Id, m.Slug, m.ForceVersion, m.ForceLoader)
 
-		if _lm, err := localmod.New(m.Name, m.Desc, m.Id, m.Slug, m.ForceVersion, m.Version); err != nil && !errIs(err, `strconv.ParseUint: parsing "": invalid syntax`) {
+		if _lm, err := localmod.New(m.Name, m.Desc, m.Id, m.Slug, m.ForceVersion, m.ForceLoader, m.Version); err != nil && !errIs(err, `strconv.ParseUint: parsing "": invalid syntax`) {
 			return Modpack{}, err
 		} else if err == nil {
 			lm = _lm
@@ -204,18 +208,41 @@ func FromToml(name string, onlySyncEmpty, ignoreExternals bool) (Modpack, error)
 	return mp, nil
 }
 
+func parseMatrixfileEntryFlags(rawFlags []string) map[string]string {
+	m := map[string]string{}
+
+	for _, f := range rawFlags {
+		if strings.Contains(f, ":") {
+			spl := strings.Split(f, ":")
+			if len(spl) > 1 {
+				m[strings.TrimSpace(spl[0])] = strings.TrimSpace(strings.Join(spl[1:], ":"))
+			}
+		}
+	}
+
+	return m
+}
+
+func configureLocalMod(plm *internal.PublicLocalMod, flags map[string]string) {
+	if v, ok := flags["v"]; ok {
+		plm.ForceVersion = v
+	}
+
+	if v, ok := flags["l"]; ok {
+		plm.ForceLoader = v
+	}
+}
+
 func FromMatrixfile(name string) error {
 	content, err := internal.ReadOptions("Matrixfile", "matrixfile", "Matrixfile.txt", "matrixfile.txt")
 	if err != nil {
 		return err
 	}
 
-	pm := publicModpack{
+	pm := internal.PublicModpack{
 		Mods: struct {
 			External map[string]string
-			Mdrth    []struct {
-				Id, Slug, Name, Desc, Version, ForceVersion string `json:",omitempty"`
-			}
+			Mdrth    []internal.PublicLocalMod
 		}{
 			External: map[string]string{},
 		},
@@ -228,48 +255,57 @@ func FromMatrixfile(name string) error {
 <Minecraft version>
 <modloader>
 
-<slug> [forced version] OR id <id> [forced version]
+(<slug> OR id <id>) [flags...]
 ...`)
 	}
 
+	realI := 0
 	for i, l := range strings.Split(strings.TrimSpace(string(content)), "\n") {
 		l = strings.TrimSpace(l)
 		if l == "" {
 			continue
 		}
 
-		if i == 0 {
+		if realI == 0 {
 			pm.Name = l
-		} else if i == 1 {
+		} else if realI == 1 {
 			pm.ModpackVersion = l
-		} else if i == 2 {
+		} else if realI == 2 {
 			pm.GameVersion = l
-		} else if i == 3 {
+		} else if realI == 3 {
 			pm.Modloader = strings.ToLower(l)
 		} else {
-			m := struct {
-				Id, Slug, Name, Desc, Version, ForceVersion string `json:",omitempty"`
-			}{}
+			m := internal.PublicLocalMod{}
 
 			spl := strings.Split(l, " ")
-			if spl[0] == "id" {
-				if len(spl) < 2 {
-					return fmt.Errorf("line %d: expected 2 items, but found 1", i+1)
-				} else if len(spl) > 2 {
-					m.ForceVersion = spl[2]
+
+			switch spl[0] {
+			case "ext", "external":
+				if len(spl) < 3 {
+					return fmt.Errorf("line %d: expected 3 items, but found %d", i+1, len(spl))
 				}
 
-				m.Id = spl[2]
-			} else {
-				if len(spl) > 1 {
-					m.ForceVersion = spl[1]
+				pm.Mods.External[spl[1]] = spl[2]
+			case "id":
+				if len(spl) < 2 {
+					return fmt.Errorf("line %d: expected 2 items, but found %d", i+1, len(spl))
 				}
+
+				configureLocalMod(&m, parseMatrixfileEntryFlags(spl[2:]))
+
+				m.Id = spl[1]
+			default:
+				configureLocalMod(&m, parseMatrixfileEntryFlags(spl[1:]))
 
 				m.Slug = spl[0]
 			}
 
-			pm.Mods.Mdrth = append(pm.Mods.Mdrth, m)
+			if m.Slug != "" || m.Id != "" {
+				pm.Mods.Mdrth = append(pm.Mods.Mdrth, m)
+			}
 		}
+
+		realI++
 	}
 
 	result, err := toml.Marshal(pm)

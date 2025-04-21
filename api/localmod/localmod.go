@@ -12,20 +12,25 @@ import (
 	"github.com/voidwyrm-2/matrix/api/version"
 )
 
-var customProcs = map[string]func(s string) string{
-	"create": func(s string) string {
-		return strings.Split(s, "-")[1]
-	},
+func splitByHyphenAndGetSecond(s string) string {
+	return strings.Split(s, "-")[1]
+}
 
-	"petrols-parts": func(s string) string {
-		return strings.Split(s, "-")[1]
-	},
-	"create-mechanical-extruder": func(s string) string {
-		return strings.Split(s, "-")[1]
-	},
-	"create-mechanical-spawner": func(s string) string {
-		return strings.Split(s, "-")[1]
-	},
+func splitByUnderscoreAndGetFirst(s string) string {
+	return strings.Split(s, "_")[0]
+}
+
+// these are special cases that can't be easily taken care of by the function
+var customProcs = map[string]func(s string) string{
+	"create":                     splitByHyphenAndGetSecond,
+	"petrols-parts":              splitByHyphenAndGetSecond,
+	"create-mechanical-extruder": splitByHyphenAndGetSecond,
+	"create-mechanical-spawner":  splitByHyphenAndGetSecond,
+	"supplementaries":            splitByHyphenAndGetSecond,
+	"moonlight":                  splitByHyphenAndGetSecond,
+	"sodium":                     splitByHyphenAndGetSecond,
+	"xaeros-minimap":             splitByUnderscoreAndGetFirst,
+	"xaeros-world-map":           splitByUnderscoreAndGetFirst,
 	"create-dreams-and-desires": func(s string) string {
 		if strings.Contains(s, "-") {
 			s = strings.Split(s, "-")[1]
@@ -36,21 +41,21 @@ var customProcs = map[string]func(s string) string{
 }
 
 type LocalMod struct {
-	name, desc, id, slug, forceVersion string
-	version                            version.Version
+	name, desc, id, slug, forceVersion, forceLoader string
+	version                                         version.Version
 }
 
-func New(name, desc, id, slug, forceVersion, mVersion string) (LocalMod, error) {
+func New(name, desc, id, slug, forceVersion, forceLoader, mVersion string) (LocalMod, error) {
 	v, err := version.FromString(mVersion, ".", 10)
 	if err != nil {
 		return LocalMod{}, err
 	}
 
-	return LocalMod{name: name, desc: desc, id: id, slug: slug, forceVersion: forceVersion, version: v}, nil
+	return LocalMod{name: name, desc: desc, id: id, slug: slug, forceVersion: forceVersion, forceLoader: forceLoader, version: v}, nil
 }
 
-func NewWithoutVersion(name, desc, id, slug, forceVersion string) LocalMod {
-	return LocalMod{name: name, desc: desc, id: id, slug: slug, forceVersion: forceVersion}
+func NewWithoutVersion(name, desc, id, slug, forceVersion, forceLoader string) LocalMod {
+	return LocalMod{name: name, desc: desc, id: id, slug: slug, forceVersion: forceVersion, forceLoader: forceLoader}
 }
 
 func (lm LocalMod) GetIdOrSlug() string {
@@ -69,18 +74,15 @@ func (lm LocalMod) IsEmpty() bool {
 	return (strings.TrimSpace(lm.id) == "" && strings.TrimSpace(lm.slug) == "") || strings.TrimSpace(lm.name) == ""
 }
 
-func (lm LocalMod) ToPublic() struct {
-	Id, Slug, Name, Desc, Version, ForceVersion string `json:",omitempty"`
-} {
-	return struct {
-		Id, Slug, Name, Desc, Version, ForceVersion string `json:",omitempty"`
-	}{
+func (lm LocalMod) ToPublic() internal.PublicLocalMod {
+	return internal.PublicLocalMod{
 		Id:           lm.id,
 		Slug:         lm.slug,
 		Name:         lm.name,
 		Desc:         lm.desc,
 		Version:      lm.version.String(),
 		ForceVersion: lm.forceVersion,
+		ForceLoader:  lm.forceLoader,
 	}
 }
 
@@ -95,6 +97,11 @@ func (lm *LocalMod) Download(gameVersion, modloader string) ([]byte, string, []r
 			return []byte{}, "", []remotemod.RemoteModVersionDependency{}, err
 		}
 	} else {
+		if lm.forceLoader != "" {
+			modloader = lm.forceLoader
+			log.Printf("\033[94mmod '%s' has been forced to use the modloader '%s'\033[0m\n", lm.GetIdOrSlug(), lm.forceLoader)
+		}
+
 		remote, err := remotemod.FromProject(lm.GetIdOrSlug())
 		if err != nil {
 			return []byte{}, "", []remotemod.RemoteModVersionDependency{}, err
@@ -107,8 +114,10 @@ func (lm *LocalMod) Download(gameVersion, modloader string) ([]byte, string, []r
 			lm.desc = remote.Description
 		}
 
-		if !slices.Contains(remote.GameVersions, gameVersion) || !slices.Contains(remote.Loaders, modloader) {
+		if !slices.Contains(remote.GameVersions, gameVersion) {
 			return []byte{}, "", []remotemod.RemoteModVersionDependency{}, fmt.Errorf("no mods found with version %s for '%s'('%s')\n", gameVersion, lm.slug, lm.id)
+		} else if !slices.Contains(remote.Loaders, modloader) {
+			return []byte{}, "", []remotemod.RemoteModVersionDependency{}, fmt.Errorf("no mods found with modloader %s for '%s'('%s')\n", modloader, lm.slug, lm.id)
 		}
 
 		filteredVersions := []remotemod.RemoteModVersion{}
@@ -137,7 +146,7 @@ func (lm *LocalMod) Download(gameVersion, modloader string) ([]byte, string, []r
 				}
 
 				if v, err := version.FromString(spl, ".", 20); err != nil {
-					panic(err.Error())
+					panic(fmt.Sprintf("cannot parse '%s'(from '%s') as version because: %s", s, lm.GetIdOrSlug(), err.Error()))
 				} else {
 					return v
 				}
