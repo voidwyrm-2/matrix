@@ -35,12 +35,7 @@ type Modpack struct {
 func (mp *Modpack) Populate() error {
 	os.Mkdir("mods", os.ModeDir|os.ModePerm)
 
-	initialD := map[string]struct{}{}
-	for _, mod := range mp.mods.mdrth {
-		initialD[mod.ToPublic().Id] = struct{}{}
-	}
-
-	err := mp.downloadMods(mp.mods.mdrth, initialD, false)
+	err := mp.downloadMods(mp.mods.mdrth, map[string]struct{}{}, false)
 	if err != nil {
 		return err
 	}
@@ -51,7 +46,7 @@ func (mp *Modpack) Populate() error {
 
 			if resp, err := internal.Download(url); err != nil {
 				if strings.TrimSpace(err.Error()) == "status code 403, '403 Forbidden'" {
-					log.Printf("\033[91mexternal mod not downloaded, please remove or download manually: '%s' at '%s')\033[0m\n", name, url)
+					log.Printf("\033[91mexternal mod could not be downloaded, please remove or download manually: '%s' at '%s')\033[0m\n", name, url)
 					continue
 				}
 				return err
@@ -79,7 +74,7 @@ func (mp *Modpack) Populate() error {
 	return nil
 }
 
-func (mp *Modpack) downloadMods(mods []localmod.LocalMod, downloadedDependencies map[string]struct{}, downloadingDependencies bool) error {
+func (mp *Modpack) downloadMods(mods []localmod.LocalMod, alreadyDownloaded map[string]struct{}, downloadingDependencies bool) error {
 	kind := "mod"
 	if downloadingDependencies {
 		kind = "dependacy"
@@ -93,12 +88,20 @@ func (mp *Modpack) downloadMods(mods []localmod.LocalMod, downloadedDependencies
 			continue
 		}
 
+		skipMod := m.AlreadyDownloaded(&alreadyDownloaded)
+		if skipMod {
+			log.Printf("\033[94mskipped '%s' because it's already been downloaded\033[0m\n", m.GetIdOrSlug())
+			continue
+		}
+
 		if mbytes, mname, dependancies, err := m.Download(mp.gameVersion.String(), mp.modloader); err != nil {
 			return err
 		} else if err = internal.WriteFile(filepath.Join("mods", mname), mbytes); err != nil {
 			return err
 		} else {
 			log.Printf("\033[92mdownloaded %s '%s'\033[0m\n", kind, mname)
+			alreadyDownloaded[m.ToPublic().Id], alreadyDownloaded[m.ToPublic().Slug] = struct{}{}, struct{}{}
+
 			if downloadingDependencies {
 				mp.mods.mdrth = append(mp.mods.mdrth, m)
 			} else {
@@ -108,13 +111,16 @@ func (mp *Modpack) downloadMods(mods []localmod.LocalMod, downloadedDependencies
 			dmods := []localmod.LocalMod{}
 
 			for _, d := range dependancies {
-				if _, ok := downloadedDependencies[d.ProjectId]; !ok && d.Kind == "required" {
-					downloadedDependencies[d.ProjectId] = struct{}{}
+				if d.ProjectId == "P7dR8mSH" && mp.modloader != "fabric" && mp.modloader != "quilt" {
+					continue
+				}
+
+				if _, ok := alreadyDownloaded[d.ProjectId]; !ok && d.Kind == "required" {
 					dmods = append(dmods, localmod.NewWithoutVersion("", "", d.ProjectId, "", "", m.ToPublic().ForceLoader))
 				}
 			}
 
-			if err := mp.downloadMods(dmods, downloadedDependencies, true); err != nil {
+			if err := mp.downloadMods(dmods, alreadyDownloaded, true); err != nil {
 				return err
 			}
 		}

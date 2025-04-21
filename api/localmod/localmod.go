@@ -74,6 +74,13 @@ func (lm LocalMod) IsEmpty() bool {
 	return (strings.TrimSpace(lm.id) == "" && strings.TrimSpace(lm.slug) == "") || strings.TrimSpace(lm.name) == ""
 }
 
+func (lm LocalMod) AlreadyDownloaded(m *map[string]struct{}) bool {
+	_, okID := (*m)[lm.id]
+	_, okSlug := (*m)[lm.slug]
+
+	return (okID && lm.id != "") || (okSlug && lm.slug != "")
+}
+
 func (lm LocalMod) ToPublic() internal.PublicLocalMod {
 	return internal.PublicLocalMod{
 		Id:           lm.id,
