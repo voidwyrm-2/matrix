@@ -194,6 +194,13 @@ var opMap = map[rune]struct {
 		},
 		[]reflect.Kind{reflect.Float32},
 	},
+	'f': { // format
+		func(st *stack) error {
+			st.push(fmt.Sprint(st.pop()))
+			return nil
+		},
+		[]reflect.Kind{reflect.Invalid},
+	},
 	'm': { // make list
 		func(st *stack) error {
 			if st.hasFloat() {
