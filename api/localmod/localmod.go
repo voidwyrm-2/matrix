@@ -1,6 +1,7 @@
 package localmod
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,20 +9,50 @@ import (
 	"strings"
 
 	"github.com/voidwyrm-2/matrix/api/internal"
+	"github.com/voidwyrm-2/matrix/api/localmod/proc"
 	"github.com/voidwyrm-2/matrix/api/remotemod"
 	"github.com/voidwyrm-2/matrix/api/version"
 )
 
-func splitByHyphenAndGetSecond(s string) string {
-	return strings.Split(s, "-")[1]
-}
-
-func splitByUnderscoreAndGetFirst(s string) string {
-	return strings.Split(s, "_")[0]
-}
+//go:embed customprocs.txt
+var rawCustomProcs string
 
 // these are special cases that can't be easily taken care of by the function
-var customProcs = map[string]func(s string) string{
+var customProcs = func() map[string]string {
+	m := map[string]string{}
+
+	for _, l := range strings.Split(rawCustomProcs, "\n") {
+		l = strings.TrimSpace(l)
+		if l == "" || strings.HasPrefix(l, "!") {
+			continue
+		}
+
+		spl := strings.Fields(l)
+		m[spl[0]] = spl[1]
+	}
+
+	return m
+}()
+
+var nativeCustomProcs = map[string]func(s string) string{
+	"create-dreams-and-desires": func(s string) string {
+		if strings.Contains(s, "-") {
+			s = strings.Split(s, "-")[1]
+		}
+
+		return strings.Join(strings.Split(s, ".")[:2], ".")
+	},
+	"genshin-instruments": func(s string) string {
+		spl := strings.Split(s, "-")
+		if spl[len(spl)-1] == "rc1" {
+			spl = spl[:len(spl)-1]
+		}
+
+		return spl[len(spl)-1]
+	},
+}
+
+/*
 	"create":                     splitByHyphenAndGetSecond,
 	"petrols-parts":              splitByHyphenAndGetSecond,
 	"create-mechanical-extruder": splitByHyphenAndGetSecond,
@@ -31,18 +62,12 @@ var customProcs = map[string]func(s string) string{
 	"sodium":                     splitByHyphenAndGetSecond,
 	"xaeros-minimap":             splitByUnderscoreAndGetFirst,
 	"xaeros-world-map":           splitByUnderscoreAndGetFirst,
-	"create-dreams-and-desires": func(s string) string {
-		if strings.Contains(s, "-") {
-			s = strings.Split(s, "-")[1]
-		}
-
-		return strings.Join(strings.Split(s, ".")[:2], ".")
-	},
 	"markdownmanual": func(s string) string {
 		return strings.Split(s, "-")[0][2:]
 	},
 	"genshin-instruments": splitByHyphenAndGetSecond,
 }
+*/
 
 type LocalMod struct {
 	name, desc, id, slug, forceVersion, forceLoader string
@@ -141,8 +166,14 @@ func (lm *LocalMod) Download(gameVersion, modloader string) ([]byte, string, []r
 
 		// why
 		parseModVersion := func(s string) version.Version {
-			if proc, ok := customProcs[lm.slug]; ok {
-				s = proc(s)
+			if ops, ok := customProcs[lm.slug]; ok {
+				if res, err := proc.Apply(lm.slug, s, ops); err != nil {
+					panic(err.Error())
+				} else {
+					s = res
+				}
+			} else if f, ok := nativeCustomProcs[lm.slug]; ok {
+				s = f(s)
 			}
 
 			spl := strings.Split(s, "+")

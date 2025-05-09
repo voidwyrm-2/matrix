@@ -1,0 +1,11 @@
+create '-|1[
+petrols-parts '-|1[
+create-mechanical-extruder '-|1[
+create-mechanical-spawner '-|1[
+supplementaries '-|1[
+moonlight '-|1[
+sodium '-|1[
+xaeros-minimap '_|0[
+xaeros-world-map '_|0[
+markdownmanual '-|0[2⌊
+!genshin-instruments d'-|d⎲
