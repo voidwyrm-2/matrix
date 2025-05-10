@@ -41,6 +41,7 @@ var customProcs = map[string]func(s string) string{
 	"markdownmanual": func(s string) string {
 		return strings.Split(s, "-")[0][2:]
 	},
+	"genshin-instruments": splitByHyphenAndGetSecond,
 }
 
 type LocalMod struct {
