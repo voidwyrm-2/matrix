@@ -38,6 +38,9 @@ var customProcs = map[string]func(s string) string{
 
 		return strings.Join(strings.Split(s, ".")[:2], ".")
 	},
+	"markdownmanual": func(s string) string {
+		return strings.Split(s, "-")[0][2:]
+	},
 }
 
 type LocalMod struct {
