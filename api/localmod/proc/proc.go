@@ -139,6 +139,16 @@ var opMap = map[rune]struct {
 		},
 		[]reflect.Kind{reflect.Invalid, reflect.Invalid},
 	},
+	'↦': { // RIGHTWARDS ARROW FROM BAR
+		func(st *stack) error {
+			b, a := st.pop(), st.pop()
+
+			st.push(b, a)
+
+			return nil
+		},
+		[]reflect.Kind{reflect.Invalid, reflect.Invalid},
+	},
 	'⑂': { // OCR FORK
 		func(st *stack) error {
 			st.push(len(st.pop().([]string)))
@@ -193,6 +203,22 @@ var opMap = map[rune]struct {
 			return nil
 		},
 		[]reflect.Kind{reflect.Float32},
+	},
+	'␣': { // UP DOWN ARROW WITH BASE
+		func(st *stack) error {
+			arr := st.pop().([]string)
+
+			str := strings.Builder{}
+
+			for _, s := range arr {
+				str.WriteString(s)
+			}
+
+			st.push(str.String())
+
+			return nil
+		},
+		[]reflect.Kind{reflect.Slice},
 	},
 	'f': { // format
 		func(st *stack) error {

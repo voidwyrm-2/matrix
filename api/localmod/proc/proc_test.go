@@ -13,6 +13,8 @@ func TestProcApplication(t *testing.T) {
 		{"hello", "2]s", "l"},
 		{"wow ok sure", "' |⎲", "sure"},
 		{"wow ok sure", "⎳s", "e"},
+		{"it's hard to see your face", "' |⎲2⌊1⌋", "c"},
+		{"can't believe another one, another's replaced", "' |2[2⌋", "an"},
 	}
 
 	for i, c := range cases {
