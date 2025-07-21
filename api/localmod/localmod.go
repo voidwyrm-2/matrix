@@ -50,6 +50,19 @@ var nativeCustomProcs = map[string]func(s string) string{
 
 		return spl[len(spl)-1]
 	},
+	"amendments": func(s string) string {
+		spl := strings.Split(s, "-")
+		return spl[len(spl)-1]
+	},
+	"every-compat": func(s string) string {
+		spl := strings.Split(s, "-")
+
+		if spl[len(spl)-1] == "neoforge" {
+			return spl[len(spl)-2]
+		}
+
+		return spl[len(spl)-1]
+	},
 }
 
 /*
@@ -122,11 +135,11 @@ func (lm LocalMod) ToPublic() internal.PublicLocalMod {
 	}
 }
 
-func (lm *LocalMod) Download(gameVersion, modloader string) ([]byte, string, []remotemod.RemoteModVersionDependency, error) {
+func (lm *LocalMod) Download(logger *log.Logger, gameVersion, modloader string) ([]byte, string, []remotemod.RemoteModVersionDependency, error) {
 	versionToUse := remotemod.RemoteModVersion{}
 
 	if lm.forceVersion != "" {
-		log.Printf("\033[94mmod '%s' has been forced to use version '%s'\033[0m\n", lm.GetIdOrSlug(), lm.forceVersion)
+		logger.Printf("mod '%s' has been forced to use version '%s'\n", lm.GetIdOrSlug(), lm.forceVersion)
 
 		if resp, err := internal.Download("https://api.modrinth.com/v2/version/" + lm.forceVersion); err != nil {
 		} else if err = json.Unmarshal(resp, &versionToUse); err != nil {
@@ -135,7 +148,7 @@ func (lm *LocalMod) Download(gameVersion, modloader string) ([]byte, string, []r
 	} else {
 		if lm.forceLoader != "" {
 			modloader = lm.forceLoader
-			log.Printf("\033[94mmod '%s' has been forced to use the modloader '%s'\033[0m\n", lm.GetIdOrSlug(), lm.forceLoader)
+			logger.Printf("mod '%s' has been forced to use the modloader '%s'\n", lm.GetIdOrSlug(), lm.forceLoader)
 		}
 
 		remote, err := remotemod.FromProject(lm.GetIdOrSlug())
@@ -178,23 +191,21 @@ func (lm *LocalMod) Download(gameVersion, modloader string) ([]byte, string, []r
 
 			spl := strings.Split(s, "+")
 
-			if strings.HasPrefix(spl[0], "v") {
-				spl[0] = spl[0][1:]
-			}
+			spl[0] = strings.TrimPrefix(spl[0], "v")
 
-			for _, spl := range strings.Split(strings.Join(strings.Split(s, "-"), "+"), "+") {
-				if strings.HasPrefix(spl, "v") {
-					spl = spl[1:]
-				}
+			for _, snip := range strings.Split(strings.Join(strings.Split(s, "-"), "+"), "+") {
+				snip = strings.TrimPrefix(snip, "v")
 
-				if v, err := version.FromString(spl, ".", 20); err != nil {
-					panic(fmt.Sprintf("cannot parse '%s'(from '%s') as version because: %s", s, lm.GetIdOrSlug(), err.Error()))
+				if v, err := version.FromString(snip, ".", 20); err != nil {
+					logger.Panicf("cannot parse '%s' (from '%s') as version because: %s\n", s, lm.GetIdOrSlug(), err.Error())
 				} else {
 					return v
 				}
 			}
 
-			panic(fmt.Sprintf("cannot parse '%s'(from '%s') as version", s, lm.GetIdOrSlug()))
+			logger.Panicf("cannot parse '%s' (from '%s') as version\n", s, lm.GetIdOrSlug())
+
+			return version.Version{}
 		}
 
 		slices.SortFunc(filteredVersions, func(a, b remotemod.RemoteModVersion) int {

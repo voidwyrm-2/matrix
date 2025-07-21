@@ -32,28 +32,33 @@ type Modpack struct {
 	}
 }
 
-func (mp *Modpack) Populate() error {
-	os.Mkdir("mods", os.ModeDir|os.ModePerm)
+func (mp *Modpack) Populate(logger *log.Logger, workingDir string) error {
+	modsFolder := filepath.Join(workingDir, "mods")
 
-	err := mp.downloadMods(mp.mods.mdrth, map[string]struct{}{}, false)
+	err := os.MkdirAll(modsFolder, os.ModeDir|os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	err = mp.downloadMods(logger, modsFolder, mp.mods.mdrth, map[string]struct{}{}, false)
 	if err != nil {
 		return err
 	}
 
 	if !mp.ignoreExternals {
 		for name, url := range mp.mods.external {
-			log.Printf("\033[93mdownloading external mod '%s'...\033[0m\n", name)
+			logger.Printf("downloading external mod '%s'...\n", name)
 
 			if resp, err := internal.Download(url); err != nil {
 				if strings.TrimSpace(err.Error()) == "status code 403, '403 Forbidden'" {
-					log.Printf("\033[91mexternal mod could not be downloaded, please remove or download manually: '%s' at '%s')\033[0m\n", name, url)
+					logger.Printf("external mod could not be downloaded, please remove or download manually: '%s' at '%s')\n", name, url)
 					continue
 				}
 				return err
-			} else if err = internal.WriteFile(filepath.Join("mods", name), resp); err != nil {
+			} else if err = internal.WriteFile(filepath.Join(modsFolder, name), resp); err != nil {
 				return err
 			} else {
-				log.Printf("\033[92mdownloaded external mod '%s'\033[0m\n", name)
+				logger.Printf("downloaded external mod '%s'\n", name)
 			}
 		}
 	}
@@ -66,6 +71,7 @@ func (mp *Modpack) Populate() error {
 			existing[m.GetIdOrSlug()] = struct{}{}
 			cleanedMods = append(cleanedMods, m)
 		} else {
+			panic("unimplemented: " + fmt.Sprint(m))
 		}
 	}
 
@@ -74,32 +80,32 @@ func (mp *Modpack) Populate() error {
 	return nil
 }
 
-func (mp *Modpack) downloadMods(mods []localmod.LocalMod, alreadyDownloaded map[string]struct{}, downloadingDependencies bool) error {
+func (mp *Modpack) downloadMods(logger *log.Logger, outputPath string, mods []localmod.LocalMod, alreadyDownloaded map[string]struct{}, downloadingDependencies bool) error {
 	kind := "mod"
 	if downloadingDependencies {
-		kind = "dependacy"
+		kind = "dependancy"
 	}
 
 	for i, m := range mods {
-		log.Printf("\033[93mdownloading %s '%s'...\033[0m\n", kind, m.GetIdOrSlug())
+		logger.Printf("downloading %s '%s'...\n", kind, m.GetIdOrSlug())
 
 		if mp.onlySyncEmpty && !m.IsEmpty() {
-			log.Printf("\033[94mskipped '%s' because only empty mods are being synced\033[0m\n", m.GetIdOrSlug())
+			logger.Printf("skipped '%s' because only empty mods are being synced\n", m.GetIdOrSlug())
 			continue
 		}
 
 		skipMod := m.AlreadyDownloaded(&alreadyDownloaded)
 		if skipMod {
-			log.Printf("\033[94mskipped '%s' because it's already been downloaded\033[0m\n", m.GetIdOrSlug())
+			logger.Printf("skipped '%s' because it's already been downloaded\n", m.GetIdOrSlug())
 			continue
 		}
 
-		if mbytes, mname, dependancies, err := m.Download(mp.gameVersion.String(), mp.modloader); err != nil {
+		if mbytes, mname, dependancies, err := m.Download(logger, mp.gameVersion.String(), mp.modloader); err != nil {
 			return err
-		} else if err = internal.WriteFile(filepath.Join("mods", mname), mbytes); err != nil {
+		} else if err = internal.WriteFile(filepath.Join(outputPath, mname), mbytes); err != nil {
 			return err
 		} else {
-			log.Printf("\033[92mdownloaded %s '%s'\033[0m\n", kind, mname)
+			logger.Printf("downloaded %s '%s'\n", kind, mname)
 			alreadyDownloaded[m.ToPublic().Id], alreadyDownloaded[m.ToPublic().Slug] = struct{}{}, struct{}{}
 
 			if downloadingDependencies {
@@ -111,6 +117,7 @@ func (mp *Modpack) downloadMods(mods []localmod.LocalMod, alreadyDownloaded map[
 			dmods := []localmod.LocalMod{}
 
 			for _, d := range dependancies {
+				// Exception for Sinytra Connector
 				if d.ProjectId == "P7dR8mSH" && mp.modloader != "fabric" && mp.modloader != "quilt" {
 					continue
 				}
@@ -120,7 +127,7 @@ func (mp *Modpack) downloadMods(mods []localmod.LocalMod, alreadyDownloaded map[
 				}
 			}
 
-			if err := mp.downloadMods(dmods, alreadyDownloaded, true); err != nil {
+			if err := mp.downloadMods(logger, outputPath, dmods, alreadyDownloaded, true); err != nil {
 				return err
 			}
 		}
@@ -239,8 +246,8 @@ func configureLocalMod(plm *internal.PublicLocalMod, flags map[string]string) {
 	}
 }
 
-func FromMatrixfile(name string) error {
-	content, err := internal.ReadOptions("Matrixfile", "matrixfile", "Matrixfile.txt", "matrixfile.txt")
+func FromMatrixfile(matrixfile, output string) error {
+	content, err := os.ReadFile(matrixfile)
 	if err != nil {
 		return err
 	}
@@ -319,7 +326,5 @@ func FromMatrixfile(name string) error {
 		return err
 	}
 
-	os.Remove(name)
-
-	return internal.WriteFile(name, result)
+	return internal.WriteFile(filepath.Join(filepath.Dir(matrixfile), output), result)
 }
