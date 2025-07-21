@@ -11,3 +11,6 @@ obj/
 
 gen.py
 makefile
+.zig-cache/
+matrix
+matrix.exe
