@@ -55,7 +55,7 @@ func initAppResources() (result *initResult, err error) {
 
 	curTime := time.Now().Format(time.DateTime)
 
-	workingLogPath := filepath.Join(matrixLogsPath, fmt.Sprintf("%s.log", strings.ReplaceAll(curTime, " ", "_")))
+	workingLogPath := filepath.Join(matrixLogsPath, strings.ReplaceAll(fmt.Sprintf("%s.log", strings.ReplaceAll(curTime, " ", "_")), ":", "-"))
 
 	file, err := os.Create(workingLogPath)
 	if err != nil {
